@@ -1,0 +1,44 @@
+[
+  {
+    "term": "nyaope / whoonga",
+    "category": "substance",
+    "plainMeaning": "A highly addictive street drug blend commonly found in South Africa, usually containing low-grade heroin mixed with cutting agents, smoked often with dagga/tobacco.",
+    "supportContext": "Causes intense physical cravings and withdrawal ('arosto'/stomach cramps, body aches, sweating). Families often carry heavy emotional and financial strain; non-judgemental medical and social-worker support (0800 12 13 14 or SANCA) helps more than punishment."
+  },
+  {
+    "term": "tik",
+    "category": "substance",
+    "plainMeaning": "Crystal methamphetamine, usually smoked in a glass pipe ('lollipop').",
+    "supportContext": "Common in the Western Cape and across SA. Can cause sleeplessness, paranoia, fast mood swings, and risky choices. Recovery works best with trigger avoidance, steady sleep/food, and peer or clinic support."
+  },
+  {
+    "term": "dagga / zol / skyf",
+    "category": "substance",
+    "plainMeaning": "Cannabis/marijuana rolled into a joint ('zol' or 'skyf').",
+    "supportContext": "Often treated casually, though heavy youth use can worsen anxiety, school/work struggles, or mix with harder substances."
+  },
+  {
+    "term": "buttons / mandrax",
+    "category": "substance",
+    "plainMeaning": "Methaqualone tablets, frequently crushed and smoked with dagga in a 'white pipe' (bottle neck).",
+    "supportContext": "Strong sedative with overdose and dependence risks, especially when mixed with alcohol."
+  },
+  {
+    "term": "kat",
+    "category": "substance",
+    "plainMeaning": "Methcathinone, a synthetic stimulant snorted as powder.",
+    "supportContext": "Causes energy spikes followed by harsh crashes, anxiety, and cravings."
+  },
+  {
+    "term": "arosto / cold turkey",
+    "category": "withdrawal",
+    "plainMeaning": "Painful physical withdrawal symptoms when someone stops using opioids like nyaope abruptly.",
+    "supportContext": "Acknowledging how scary withdrawal feels builds trust; encourage safe clinic/social-worker guidance via 0800 12 13 14."
+  },
+  {
+    "term": "skollie / tsotsi / gang crew",
+    "category": "community_pressure",
+    "plainMeaning": "Local street terms for petty crime, robbery, or neighbourhood gang groups.",
+    "supportContext": "Youth often face coercion, protection pressure, or economic survival pressure rather than pure choice. Focus on immediate safety and trusted community/diversion allies (Childline 116, Legal Aid 0800 110 110)."
+  }
+]

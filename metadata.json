@@ -1,0 +1,8 @@
+{
+  "name": "Thuso",
+  "description": "A safe, judgement-free conversational support space with Thuso, a South African community mentor and counsellor supporting youth and families affected by crime and substance abuse.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: #1f3a5f;
+    background-color: #f6f4f1;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color: #f6f4f1;
+    background-color: #12233b;
+    color-scheme: dark;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #3d6a9e;
+    outline-offset: 2px;
+  }
+
+  html.dark *:focus-visible {
+    outline: 2px solid #8eb4e0;
+    outline-offset: 2px;
+  }
+}
+
+@keyframes step-check-pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+  55% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes step-ring-ripple {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.animate-step-check-pop {
+  animation: step-check-pop 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-step-ring-ripple {
+  animation: step-ring-ripple 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
