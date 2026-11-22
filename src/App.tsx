@@ -22,6 +22,7 @@ import {
   SupportResource,
   TriggerNote,
 } from './types.ts';
+import { triggerHaptic } from './utils/haptics.ts';
 
 const STORAGE_KEYS = {
   steps: 'thuso_small_steps_v1',
@@ -107,6 +108,19 @@ export default function App() {
       return next;
     });
   };
+
+  const handleSelectView = useCallback(
+    (view: AppView) => {
+      if (
+        view !== activeView &&
+        (view === 'steps' || view === 'selfcare' || view === 'support')
+      ) {
+        triggerHaptic('selection');
+      }
+      setActiveView(view);
+    },
+    [activeView]
+  );
 
   const [popiaConsent, setPopiaConsent] = useState<boolean>(false);
 
@@ -489,24 +503,39 @@ export default function App() {
   };
 
   const handleAddStep = (text: string, sourceNote?: string) => {
+    const nowIso = new Date().toISOString();
     const newStep: SmallStep = {
       id: `step-${Date.now()}`,
       text,
       completed: false,
       createdAt: formatTodayDate(),
+      createdAtIso: nowIso,
       sourceNote,
     };
     setSteps((prev) => [newStep, ...prev]);
   };
 
   const handleToggleStep = (id: string) => {
+    const nowIso = new Date().toISOString();
     setSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, completed: !s.completed } : s))
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const nextCompleted = !s.completed;
+        return {
+          ...s,
+          completed: nextCompleted,
+          completedAtIso: nextCompleted ? nowIso : undefined,
+        };
+      })
     );
   };
 
   const handleDeleteStep = (id: string) => {
     setSteps((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleClearCompletedSteps = () => {
+    setSteps((prev) => prev.filter((s) => !s.completed));
   };
 
   const handleAddTrigger = (note: Omit<TriggerNote, 'id' | 'createdAt'>) => {
@@ -537,22 +566,42 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-[#f6f4f1] text-[#1f3a5f] dark:bg-[#12233b] dark:text-[#f6f4f1] overflow-hidden">
+    <div className="relative flex flex-col h-[100dvh] w-full text-white overflow-hidden">
+      {/* Full-screen soft cloud photo background with indigo/periwinkle overlay */}
+      <div className="fixed inset-0 -z-10 pointer-events-none select-none overflow-hidden bg-[#5e6bd6]">
+        <img
+          src="https://images.pexels.com/photos/8726326/pexels-photo-8726326.jpeg"
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover scale-105 opacity-75"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 transition-opacity duration-500"
+          style={{
+            background: isDark
+              ? 'linear-gradient(155deg, rgba(49,52,145,0.88) 0%, rgba(76,45,168,0.82) 50%, rgba(56,72,168,0.90) 100%)'
+              : 'linear-gradient(155deg, rgba(64,68,172,0.82) 0%, rgba(88,52,186,0.76) 50%, rgba(74,96,194,0.84) 100%)',
+          }}
+        />
+      </div>
+
       <TopBar
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={handleSelectView}
         onOpenUrgentHelp={() => setUrgentModalOpen(true)}
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
       />
 
-      <div className="flex flex-1 min-h-0 max-w-7xl w-full mx-auto bg-white dark:bg-[#182d4a] lg:border-x lg:border-[#dce3ec] dark:lg:border-[#2d4b73]">
+      <div className="flex flex-1 min-h-0 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:py-6 gap-6">
         <DesktopSidebar
           steps={steps}
           urgentResources={urgentResources}
           resourcesLoading={resourcesLoading}
           onToggleStep={handleToggleStep}
-          onNavigate={setActiveView}
+          onNavigate={handleSelectView}
           onStartTour={handleStartTour}
         />
 
@@ -581,6 +630,7 @@ export default function App() {
               onAddStep={(txt) => handleAddStep(txt)}
               onToggleStep={handleToggleStep}
               onDeleteStep={handleDeleteStep}
+              onClearCompletedSteps={handleClearCompletedSteps}
               onCheckInWithThuso={handleCheckInWithThuso}
               onAddTrigger={handleAddTrigger}
               onDeleteTrigger={handleDeleteTrigger}
@@ -606,17 +656,17 @@ export default function App() {
       {/* Compact Mobile Bottom Navigation */}
       <nav
         aria-label="Mobile navigation"
-        className={`md:hidden shrink-0 sticky bottom-0 z-20 h-14 bg-white dark:bg-[#182d4a] border-t border-[#dce3ec] dark:border-[#2d4b73] grid items-center ${
+        className={`md:hidden shrink-0 z-30 glass-bar border-t border-white/20 pb-[env(safe-area-inset-bottom,0px)] grid items-stretch ${
           crisisDetected ? 'grid-cols-5' : 'grid-cols-4'
         }`}
       >
         <button
           type="button"
-          onClick={() => setActiveView('chat')}
-          className={`flex flex-col items-center justify-center h-full gap-0.5 px-1 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer ${
+          onClick={() => handleSelectView('chat')}
+          className={`flex flex-col items-center justify-center min-h-[60px] gap-0.5 px-1 py-1.5 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer transition-colors ${
             activeView === 'chat'
-              ? 'text-[#3d6a9e] dark:text-[#8eb4e0] font-semibold'
-              : 'text-[#4a6280] dark:text-[#c5d3e6]'
+              ? 'text-white font-semibold'
+              : 'text-white/75 hover:text-white'
           }`}
         >
           <MessageCircle className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -626,11 +676,11 @@ export default function App() {
         <button
           type="button"
           data-tour="small-steps-tab"
-          onClick={() => setActiveView('steps')}
-          className={`flex flex-col items-center justify-center h-full gap-0.5 px-1 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer ${
+          onClick={() => handleSelectView('steps')}
+          className={`flex flex-col items-center justify-center min-h-[60px] gap-0.5 px-1 py-1.5 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer transition-colors ${
             activeView === 'steps'
-              ? 'text-[#3d6a9e] dark:text-[#8eb4e0] font-semibold'
-              : 'text-[#4a6280] dark:text-[#c5d3e6]'
+              ? 'text-white font-semibold'
+              : 'text-white/75 hover:text-white'
           }`}
         >
           <Footprints className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -640,11 +690,11 @@ export default function App() {
         <button
           type="button"
           data-tour="self-care-target"
-          onClick={() => setActiveView('selfcare')}
-          className={`flex flex-col items-center justify-center h-full gap-0.5 px-1 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer ${
+          onClick={() => handleSelectView('selfcare')}
+          className={`flex flex-col items-center justify-center min-h-[60px] gap-0.5 px-1 py-1.5 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer transition-colors ${
             activeView === 'selfcare'
-              ? 'text-[#3d6a9e] dark:text-[#8eb4e0] font-semibold'
-              : 'text-[#4a6280] dark:text-[#c5d3e6]'
+              ? 'text-white font-semibold'
+              : 'text-white/75 hover:text-white'
           }`}
         >
           <Wind className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -653,11 +703,11 @@ export default function App() {
 
         <button
           type="button"
-          onClick={() => setActiveView('support')}
-          className={`flex flex-col items-center justify-center h-full gap-0.5 px-1 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer ${
+          onClick={() => handleSelectView('support')}
+          className={`flex flex-col items-center justify-center min-h-[60px] gap-0.5 px-1 py-1.5 text-[10px] min-[360px]:text-[11px] font-medium cursor-pointer transition-colors ${
             activeView === 'support'
-              ? 'text-[#3d6a9e] dark:text-[#8eb4e0] font-semibold'
-              : 'text-[#4a6280] dark:text-[#c5d3e6]'
+              ? 'text-white font-semibold'
+              : 'text-white/75 hover:text-white'
           }`}
         >
           <HeartHandshake className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -669,7 +719,7 @@ export default function App() {
             type="button"
             onClick={() => setUrgentModalOpen(true)}
             aria-label="Urgent Help — crisis support detected"
-            className="flex flex-col items-center justify-center h-full gap-0.5 px-1 text-[10px] min-[360px]:text-[11px] font-semibold bg-[#FEF3F2] text-[#B42318] border-l border-[#F3C5C5] hover:bg-[#FEE4E2] dark:bg-[#331618] dark:text-[#FDA29B] dark:border-[#7A271A] dark:hover:bg-[#461d20] transition-colors cursor-pointer"
+            className="flex flex-col items-center justify-center min-h-[60px] gap-0.5 px-1 py-1.5 text-[10px] min-[360px]:text-[11px] font-semibold bg-[#9F1239]/75 text-white border-l border-[#FDA4AF]/40 hover:bg-[#9F1239]/90 transition-colors cursor-pointer"
           >
             <ShieldAlert className="w-5 h-5 shrink-0" aria-hidden="true" />
             <span className="truncate max-w-full">Urgent Help</span>

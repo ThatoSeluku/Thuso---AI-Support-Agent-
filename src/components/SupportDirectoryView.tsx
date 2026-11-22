@@ -1,6 +1,7 @@
 import { Check, Copy, MessageSquare, PhoneCall, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SupportCategory, SupportResource } from '../types.ts';
+import { GlassCard } from './GlassCard.tsx';
 
 interface SupportDirectoryViewProps {
   resources: SupportResource[];
@@ -56,91 +57,94 @@ export function SupportDirectoryView({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white dark:bg-[#182d4a] px-4 sm:px-8 py-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <header className="pb-6 border-b border-[#dce3ec] dark:border-[#2d4b73]">
-          <p className="text-xs font-medium text-[#4a6280] dark:text-[#c5d3e6]">
-            South Africa · Verified public & NGO support
-          </p>
-          <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-[#1f3a5f] dark:text-[#f6f4f1] mt-2 text-balance">
-            Real local support and helplines
-          </h1>
-          <p className="text-sm sm:text-base text-[#4a6280] dark:text-[#c5d3e6] mt-2 max-w-[65ch] leading-relaxed">
-            You do not have to carry this alone. These South African services offer free or low-cost counselling, rehab referrals, legal advice, and emergency protection.
-          </p>
-        </header>
+    <div className="flex-1 min-h-0 overflow-y-auto scroll-pb-20 px-0.5 pb-8 sm:pb-6">
+      <div className="max-w-5xl mx-auto space-y-5">
+        <GlassCard as="section" className="space-y-4">
+          <header>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80">
+              South Africa · Verified public &amp; NGO support
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-2 text-balance">
+              Real local support and helplines
+            </h1>
+            <p className="text-sm sm:text-base text-white/85 mt-2 max-w-[65ch] leading-relaxed">
+              You do not have to carry this alone. These South African services offer free or low-cost counselling, rehab referrals, legal advice, and emergency protection.
+            </p>
+          </header>
 
-        {/* Search and Interactive Filter Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search
-              className="w-4 h-4 text-[#4a6280] dark:text-[#c5d3e6] absolute left-3.5 top-1/2 -translate-y-1/2"
-              aria-hidden="true"
-            />
-            <label htmlFor="support-search" className="sr-only">
-              Search local support services
-            </label>
-            <input
-              id="support-search"
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by topic (e.g. nyaope, teen, court, abuse)"
-              className="w-full min-h-[44px] pl-10 pr-4 py-2 text-sm bg-[#f6f4f1] dark:bg-[#12233b] border border-[#c5d1e0] dark:border-[#2d4b73] rounded-lg text-[#1f3a5f] dark:text-[#f6f4f1] placeholder:text-[#5c728f] dark:placeholder:text-[#9cb1cc] focus:bg-white dark:focus:bg-[#162944] focus:border-[#3d6a9e] dark:focus:border-[#8eb4e0] focus:outline-none"
-            />
-          </div>
+          {/* Search and Interactive Filter Controls */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2 border-t border-white/15">
+            <div className="relative flex-1 max-w-md min-w-0">
+              <Search
+                className="w-4 h-4 text-white/75 absolute left-3.5 top-1/2 -translate-y-1/2"
+                aria-hidden="true"
+              />
+              <label htmlFor="support-search" className="sr-only">
+                Search local support services
+              </label>
+              <input
+                id="support-search"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by topic (e.g. nyaope, teen, court, abuse)"
+                className="w-full min-h-[44px] pl-10 pr-4 py-2 text-xs bg-white/10 border border-white/25 rounded-[16px] text-white placeholder:text-[11.5px] placeholder:text-white/70 focus:bg-white/[0.16] focus:border-white/50 focus:outline-none"
+              />
+            </div>
 
-          <div
-            role="tablist"
-            aria-label="Filter support by category"
-            className="flex items-center gap-1 p-1 bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] rounded-lg overflow-x-auto"
-          >
-            {CATEGORIES.map((category) => {
-              const isActive = selectedCategory === category;
-              return (
-                <button
-                  key={category}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-3 py-1.5 min-h-[36px] text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    isActive
-                      ? 'bg-[#e3ecf6] dark:bg-[#213f66] text-[#1f3a5f] dark:text-[#f6f4f1] font-semibold'
-                      : 'text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#1f3a5f] dark:hover:text-[#f6f4f1]'
-                  }`}
-                >
-                  {category}
-                </button>
-              );
-            })}
+            <div
+              role="tablist"
+              aria-label="Filter support by category"
+              className="flex flex-wrap items-center gap-1 p-1.5 bg-white/10 border border-white/25 rounded-[16px] sm:rounded-full w-full lg:w-auto max-w-full"
+            >
+              {CATEGORIES.map((category) => {
+                const isActive = selectedCategory === category;
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-3 py-1.5 min-h-[44px] text-xs font-semibold rounded-full transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-white text-[#6D3FE0]'
+                        : 'text-white/85 hover:text-white'
+                    }`}
+                  >
+                    {category}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </GlassCard>
 
         {/* Loading, Error, Empty, or Populated Directory List */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <GlassCard padding="none" className="divide-y divide-white/15">
             {[1, 2, 3, 4].map((n) => (
-              <div
-                key={n}
-                className="h-44 rounded-xl bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73]"
-              />
+              <div key={n} className="p-5 sm:p-6 space-y-3">
+                <div className="h-3 w-36 rounded bg-white/15" />
+                <div className="h-5 w-60 rounded bg-white/20" />
+                <div className="h-4 w-full rounded bg-white/10" />
+              </div>
             ))}
-          </div>
+          </GlassCard>
         ) : error ? (
-          <div className="p-6 rounded-xl bg-[#FEF7F7] dark:bg-[#331618] border border-[#F3C5C5] dark:border-[#7A271A] text-center">
-            <p className="text-sm font-medium text-[#7A1A14] dark:text-[#FDA29B]">{error}</p>
+          <GlassCard variant="alert" className="text-center py-6">
+            <p className="text-sm font-medium">{error}</p>
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 px-4 py-2 min-h-[40px] text-xs font-medium rounded-lg border border-[#F3C5C5] dark:border-[#7A271A] bg-white dark:bg-[#182d4a] text-[#7A1A14] dark:text-[#FDA29B] hover:bg-[#FEF3F2] dark:hover:bg-[#461d20] cursor-pointer"
+              className="mt-3 px-5 py-2.5 min-h-[44px] text-xs font-semibold rounded-full bg-white text-[#9F1239] hover:bg-white/90 cursor-pointer"
             >
               Try again
             </button>
-          </div>
+          </GlassCard>
         ) : filtered.length === 0 ? (
-          <div className="p-8 rounded-xl bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] text-center">
-            <p className="text-sm font-medium text-[#1f3a5f] dark:text-[#f6f4f1]">
+          <GlassCard className="text-center py-8">
+            <p className="text-sm font-semibold text-white">
               No matching services found
             </p>
             <button
@@ -149,61 +153,58 @@ export function SupportDirectoryView({
                 setSelectedCategory('All');
                 setSearchQuery('');
               }}
-              className="mt-3 px-4 py-2 min-h-[40px] text-xs font-medium rounded-lg border border-[#c5d1e0] dark:border-[#2d4b73] bg-white dark:bg-[#182d4a] text-[#1f3a5f] dark:text-[#f6f4f1] hover:bg-[#e3ecf6] dark:hover:bg-[#213f66] cursor-pointer"
+              className="mt-3 px-5 py-2.5 min-h-[44px] text-xs font-semibold rounded-full border border-white/30 bg-white/15 text-white hover:bg-white/25 cursor-pointer"
             >
               Show all services
             </button>
-          </div>
+          </GlassCard>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <GlassCard padding="none" className="divide-y divide-white/15">
             {filtered.map((item) => (
               <article
                 key={item.id}
-                className="p-5 rounded-xl bg-white dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] flex flex-col justify-between gap-4"
+                className="p-5 sm:p-6 flex flex-col gap-4"
               >
-                <div>
-                  <p className="text-xs text-[#4a6280] dark:text-[#c5d3e6]">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80 break-words">
                     {item.category} · {item.hours} · {item.cost}
                   </p>
-                  <h2 className="font-serif text-lg font-semibold text-[#1f3a5f] dark:text-[#f6f4f1] mt-1">
+                  <h2 className="text-lg font-bold tracking-tight text-white mt-1.5 break-words">
                     {item.name}
                   </h2>
-                  <p className="text-sm text-[#4a6280] dark:text-[#c5d3e6] mt-2 leading-relaxed">
+                  <p className="text-sm text-white/85 mt-2 leading-relaxed break-words">
                     {item.description}
                   </p>
-                  <p className="text-xs text-[#1f3a5f] dark:text-[#f6f4f1] mt-2.5">
-                    <span className="font-medium">Who it helps:</span> {item.whoItHelps}
+                  <p className="text-xs text-white mt-2.5 break-words">
+                    <span className="font-semibold">Who it helps:</span>{' '}
+                    <span className="text-white/85">{item.whoItHelps}</span>
                   </p>
                   {item.secondaryContact && (
-                    <p className="text-xs text-[#4a6280] dark:text-[#c5d3e6] mt-1 font-mono tabular-nums">
+                    <p className="text-xs text-white/80 mt-1 font-mono tabular-nums break-words">
                       Alt: {item.secondaryContact}
                     </p>
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-[#dce3ec] dark:border-[#2d4b73] flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <a
                       href={item.telHref}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-mono font-semibold tabular-nums transition-colors whitespace-nowrap ${
-                        item.urgent
-                          ? 'bg-[#3d6a9e] text-white hover:bg-[#2f5582] dark:bg-[#6994c6] dark:text-[#0f1f36] dark:hover:bg-[#7da6d4]'
-                          : 'bg-[#e3ecf6] dark:bg-[#213f66] text-[#1f3a5f] dark:text-[#f6f4f1] hover:bg-[#d3e1f2] dark:hover:bg-[#2c5182]'
-                      }`}
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-full text-xs font-mono font-bold tabular-nums border border-white/35 bg-white/20 text-white hover:bg-white/30 transition-colors whitespace-nowrap"
                     >
-                      <PhoneCall className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>{item.phone}</span>
+                      <PhoneCall className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      <span>Call {item.phone}</span>
                     </a>
 
                     <button
                       type="button"
                       onClick={() => handleCopy(item.id, item.phone)}
                       aria-label={`Copy phone number ${item.phone}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-2 min-h-[40px] rounded-lg border border-[#dce3ec] dark:border-[#2d4b73] text-xs text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#1f3a5f] dark:hover:text-[#f6f4f1] hover:bg-[#e3ecf6] dark:hover:bg-[#213f66] transition-colors cursor-pointer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-full bg-transparent text-xs font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                     >
                       {copiedId === item.id ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-[#3d6a9e] dark:text-[#8eb4e0]" aria-hidden="true" />
+                          <Check className="w-3.5 h-3.5 text-white" aria-hidden="true" />
                           <span>Copied</span>
                         </>
                       ) : (
@@ -222,7 +223,7 @@ export function SupportDirectoryView({
                         `I'm nervous about calling ${item.name} (${item.phone}). Can you help me know what to say or expect?`
                       )
                     }
-                    className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] text-xs font-medium text-[#3d6a9e] dark:text-[#8eb4e0] hover:bg-[#e3ecf6] dark:hover:bg-[#213f66] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center justify-center sm:justify-start gap-1.5 px-3 py-2 min-h-[44px] text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 rounded-full transition-colors whitespace-nowrap cursor-pointer self-start sm:self-auto"
                   >
                     <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>Help me reach out</span>
@@ -230,7 +231,7 @@ export function SupportDirectoryView({
                 </div>
               </article>
             ))}
-          </div>
+          </GlassCard>
         )}
       </div>
     </div>

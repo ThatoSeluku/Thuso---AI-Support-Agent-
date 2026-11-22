@@ -37,6 +37,8 @@ export interface SmallStep {
   text: string;
   completed: boolean;
   createdAt: string;
+  createdAtIso?: string;
+  completedAtIso?: string;
   sourceNote?: string;
 }
 

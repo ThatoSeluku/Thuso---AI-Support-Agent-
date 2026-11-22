@@ -1,6 +1,7 @@
 import { ShieldCheck, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { LAYER2_FULL_NOTICE } from '../data/privacyNotice.ts';
+import { GlassCard } from './GlassCard.tsx';
 
 interface PrivacyNoticeModalProps {
   isOpen: boolean;
@@ -26,26 +27,31 @@ export function PrivacyNoticeModal({ isOpen, onClose }: PrivacyNoticeModalProps)
       role="dialog"
       aria-modal="true"
       aria-labelledby="popia-full-notice-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1f3a5f]/40 dark:bg-[#091424]/75 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#16143a]/75"
       onClick={onClose}
     >
-      <div
-        className="w-full max-w-2xl max-h-[88dvh] flex flex-col bg-white dark:bg-[#182d4a] border border-[#dce3ec] dark:border-[#2d4b73] rounded-xl shadow-sm overflow-hidden"
+      <GlassCard
+        padding="none"
+        variant="modal"
+        className="w-full max-w-2xl max-h-[88dvh] flex flex-col text-white shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 flex items-start justify-between gap-4 p-6 border-b border-[#dce3ec] dark:border-[#2d4b73]">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-[#e3ecf6] dark:bg-[#213f66] border border-[#dce3ec] dark:border-[#2d4b73] text-[#3d6a9e] dark:text-[#8eb4e0] flex items-center justify-center shrink-0">
+        <div className="shrink-0 flex items-start justify-between gap-4 p-6 border-b border-white/15">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-full bg-white/15 border border-white/25 text-white flex items-center justify-center shrink-0">
               <ShieldCheck className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+                Privacy &amp; POPIA
+              </p>
               <h2
                 id="popia-full-notice-title"
-                className="font-serif text-xl font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]"
+                className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1"
               >
                 {LAYER2_FULL_NOTICE.title}
               </h2>
-              <p className="text-xs sm:text-sm text-[#4a6280] dark:text-[#c5d3e6] mt-1">
+              <p className="text-xs sm:text-sm text-white/70 mt-1">
                 {LAYER2_FULL_NOTICE.subtitle}
               </p>
             </div>
@@ -55,7 +61,7 @@ export function PrivacyNoticeModal({ isOpen, onClose }: PrivacyNoticeModalProps)
             type="button"
             onClick={onClose}
             aria-label="Close privacy notice"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#1f3a5f] dark:hover:text-[#f6f4f1] hover:bg-[#e3ecf6] dark:hover:bg-[#213f66] transition-colors cursor-pointer shrink-0"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -65,28 +71,28 @@ export function PrivacyNoticeModal({ isOpen, onClose }: PrivacyNoticeModalProps)
           {LAYER2_FULL_NOTICE.sections.map((section) => (
             <div
               key={section.label}
-              className="pb-4 border-b border-[#dce3ec] dark:border-[#2d4b73] last:border-b-0 last:pb-0"
+              className="pb-4 border-b border-white/15 last:border-b-0 last:pb-0"
             >
-              <h3 className="text-sm font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
                 {section.label}
               </h3>
-              <p className="text-sm text-[#4a6280] dark:text-[#c5d3e6] mt-1 leading-relaxed">
+              <p className="text-sm text-white mt-1.5 leading-relaxed">
                 {section.body}
               </p>
             </div>
           ))}
         </div>
 
-        <div className="shrink-0 p-4 border-t border-[#dce3ec] dark:border-[#2d4b73] bg-[#f6f4f1] dark:bg-[#12233b] flex justify-end">
+        <div className="shrink-0 px-6 py-4 border-t border-white/15 bg-white/[0.06] flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 min-h-[44px] rounded-lg bg-[#3d6a9e] text-white text-sm font-medium hover:bg-[#2f5582] dark:bg-[#6994c6] dark:text-[#0f1f36] dark:hover:bg-[#7da6d4] transition-colors cursor-pointer"
+            className="px-6 py-2.5 min-h-[44px] rounded-full bg-white text-[#6D3FE0] text-sm font-semibold hover:bg-white/90 transition-colors cursor-pointer shadow-sm"
           >
             Back to notice
           </button>
         </div>
-      </div>
+      </GlassCard>
     </div>
   );
 }

@@ -4,9 +4,11 @@ import {
   Check,
   HeartHandshake,
   Lock,
+  Mic,
+  MicOff,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   LAYER1_NOTICE,
   NOTICE_LANGUAGE_LABELS,
@@ -17,6 +19,8 @@ import {
   THUSO_PORTRAIT_URL,
 } from '../data/uiContent.ts';
 import { ChatMessage, SupportResource } from '../types.ts';
+import { triggerHaptic } from '../utils/haptics.ts';
+import { GlassCard } from './GlassCard.tsx';
 import { PrivacyNoticeModal } from './PrivacyNoticeModal.tsx';
 import { SafetyPanel } from './SafetyPanel.tsx';
 
@@ -36,6 +40,58 @@ interface ChatWorkspaceProps {
 }
 
 const LANGUAGES: NoticeLanguage[] = ['en', 'zu', 'xh', 'af', 'st'];
+
+const SPEECH_LOCALE_BY_NOTICE_LANG: Record<NoticeLanguage, string> = {
+  en: 'en-ZA',
+  zu: 'zu-ZA',
+  xh: 'xh-ZA',
+  af: 'af-ZA',
+  st: 'st-ZA',
+};
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const win = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null;
+}
 
 const FALLBACK_ERROR_HELPLINES: SupportResource[] = [
   {
@@ -101,11 +157,48 @@ export function ChatWorkspace({
   const [privacyChecked, setPrivacyChecked] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
 
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
   const endRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const baseInputRef = useRef('');
 
+  const speechSupported = getSpeechRecognitionConstructor() !== null;
   const hasUserMessages = messages.some((m) => m.role === 'user');
   const notice = LAYER1_NOTICE[noticeLang];
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // Ignore stop errors if already stopped
+      }
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // Ignore cleanup errors
+        }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!popiaConsent || isStreaming) {
+      stopListening();
+    }
+  }, [popiaConsent, isStreaming, stopListening]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -119,12 +212,95 @@ export function ChatWorkspace({
     }
   }, [popiaConsent]);
 
+  const resizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (isStreaming || !popiaConsent) return;
+
+    if (isListening) {
+      stopListening();
+      return;
+    }
+
+    const SpeechRec = getSpeechRecognitionConstructor();
+    if (!SpeechRec) {
+      setVoiceError(
+        'Voice-to-text is not supported in this browser. You can type your message directly.'
+      );
+      return;
+    }
+
+    setVoiceError(null);
+    baseInputRef.current = input;
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = SPEECH_LOCALE_BY_NOTICE_LANG[noticeLang] || 'en-ZA';
+
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        let spoken = '';
+        for (let i = 0; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          if (result && result[0]?.transcript) {
+            spoken += result[0].transcript;
+          }
+        }
+        const cleanedSpoken = spoken.trimStart();
+        const base = baseInputRef.current;
+        const separator =
+          base.length > 0 && !/\s$/.test(base) && cleanedSpoken.length > 0 ? ' ' : '';
+        const combined = `${base}${separator}${cleanedSpoken}`.slice(0, 1500);
+        setInput(combined);
+        window.requestAnimationFrame(resizeTextarea);
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setVoiceError(
+            'Microphone access was blocked. Allow microphone permission in your browser or type your message.'
+          );
+        } else if (event.error === 'audio-capture') {
+          setVoiceError('No microphone was found on this device.');
+        } else if (event.error === 'no-speech') {
+          setVoiceError('No speech was detected. Tap the microphone to try again.');
+        } else if (event.error !== 'aborted') {
+          setVoiceError('Voice input stopped unexpectedly. You can tap the microphone to try again.');
+        }
+        recognitionRef.current = null;
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      setIsListening(true);
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+      setVoiceError('Could not start voice input right now. Please type your message instead.');
+    }
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
+    stopListening();
     const trimmed = input.trim();
     if (!trimmed || isStreaming || !popiaConsent) return;
+    triggerHaptic('light');
     onSendMessage(trimmed);
     setInput('');
+    setVoiceError(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -139,9 +315,8 @@ export function ChatWorkspace({
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    if (voiceError) setVoiceError(null);
+    resizeTextarea();
   };
 
   const openStepSaver = (msg: ChatMessage) => {
@@ -163,9 +338,12 @@ export function ChatWorkspace({
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-[#182d4a]">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Compact conversation header strip */}
-      <div className="shrink-0 border-b border-[#dce3ec] dark:border-[#2d4b73] px-4 sm:px-6 py-3 flex items-center justify-between gap-4 bg-white dark:bg-[#182d4a]">
+      <GlassCard
+        padding="compact"
+        className="shrink-0 flex items-center justify-between gap-3 mb-3"
+      >
         <div className="flex items-center gap-3 min-w-0">
           {!avatarError ? (
             <img
@@ -173,18 +351,18 @@ export function ChatWorkspace({
               alt="Thuso, AI community support companion"
               referrerPolicy="no-referrer"
               onError={() => setAvatarError(true)}
-              className="w-10 h-10 rounded-full object-cover border border-[#dce3ec] dark:border-[#2d4b73] shrink-0"
+              className="w-10 h-10 rounded-full object-cover border border-white/30 shrink-0"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-[#e3ecf6] dark:bg-[#213f66] border border-[#dce3ec] dark:border-[#2d4b73] flex items-center justify-center text-[#3d6a9e] dark:text-[#8eb4e0] shrink-0">
+            <div className="w-10 h-10 rounded-full bg-white/15 border border-white/25 flex items-center justify-center text-white shrink-0">
               <HeartHandshake className="w-5 h-5" aria-hidden="true" />
             </div>
           )}
           <div className="min-w-0">
-            <h1 className="font-serif text-base font-semibold text-[#1f3a5f] dark:text-[#f6f4f1] truncate">
+            <h1 className="text-base font-bold tracking-tight text-white truncate">
               Thuso
             </h1>
-            <p className="text-xs text-[#4a6280] dark:text-[#c5d3e6] truncate">
+            <p className="text-xs text-white/80 truncate">
               AI support companion · Not a licensed therapist or emergency service
             </p>
           </div>
@@ -194,39 +372,45 @@ export function ChatWorkspace({
           <button
             type="button"
             onClick={onDeleteMyChat}
-            className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] text-xs font-medium rounded-lg border border-[#dce3ec] dark:border-[#2d4b73] bg-white dark:bg-[#12233b] text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#B42318] hover:border-[#F3C5C5] hover:bg-[#FEF7F7] dark:hover:text-[#FDA29B] dark:hover:border-[#7A271A] dark:hover:bg-[#331618] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-xs font-medium rounded-full bg-transparent text-white/85 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Delete my chat</span>
           </button>
         )}
-      </div>
+      </GlassCard>
 
       {/* Scrollable Message Thread */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 bg-white dark:bg-[#182d4a]">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto scroll-pb-20 px-0.5 py-2 sm:py-3">
+        <div className="max-w-2xl w-full min-w-0 mx-auto space-y-5 pb-4">
           {/* Layer 1 POPIA Notice before first message */}
           {!popiaConsent && (
-            <section
+            <GlassCard
+              as="section"
               aria-labelledby="popia-layer1-heading"
-              className="p-5 sm:p-6 rounded-xl bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] space-y-4"
+              className="space-y-5"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#dce3ec] dark:border-[#2d4b73]">
-                <div className="flex items-center gap-2.5">
-                  <Lock className="w-4 h-4 text-[#3d6a9e] dark:text-[#8eb4e0] shrink-0" aria-hidden="true" />
-                  <h2
-                    id="popia-layer1-heading"
-                    className="font-serif text-lg font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]"
-                  >
-                    {notice.heading}
-                  </h2>
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-white/15 min-w-0">
+                <div className="flex items-start gap-3 min-w-0">
+                  <Lock className="w-4 h-4 text-white/85 shrink-0 mt-1" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80">
+                      Privacy &amp; Safety
+                    </p>
+                    <h2
+                      id="popia-layer1-heading"
+                      className="text-xl font-bold tracking-tight text-white mt-0.5"
+                    >
+                      {notice.heading}
+                    </h2>
+                  </div>
                 </div>
 
                 {/* Language Switcher for Plain-Language Notice */}
                 <div
                   role="tablist"
                   aria-label="Notice language"
-                  className="flex items-center gap-1 p-1 bg-[#e3ecf6] dark:bg-[#182d4a] rounded-lg overflow-x-auto"
+                  className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white/10 border border-white/25 rounded-[16px] sm:rounded-full w-full sm:w-auto max-w-full"
                 >
                   {LANGUAGES.map((lang) => {
                     const active = noticeLang === lang;
@@ -237,10 +421,10 @@ export function ChatWorkspace({
                         role="tab"
                         aria-selected={active}
                         onClick={() => setNoticeLang(lang)}
-                        className={`px-2.5 py-1 min-h-[32px] text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        className={`px-3 py-1.5 min-h-[44px] text-xs font-semibold rounded-full transition-colors max-w-full break-words text-center cursor-pointer ${
                           active
-                            ? 'bg-white dark:bg-[#213f66] text-[#1f3a5f] dark:text-[#f6f4f1] border border-[#dce3ec] dark:border-[#3c5e8a]'
-                            : 'text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#1f3a5f] dark:hover:text-[#f6f4f1]'
+                            ? 'bg-white text-[#6D3FE0]'
+                            : 'text-white/85 hover:text-white'
                         }`}
                       >
                         {NOTICE_LANGUAGE_LABELS[lang]}
@@ -250,60 +434,60 @@ export function ChatWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-2.5 text-sm text-[#1f3a5f] dark:text-[#f6f4f1] leading-relaxed">
+              <div className="space-y-3 text-sm text-white leading-relaxed">
                 <p>{notice.intro}</p>
-                <p className="text-[#4a6280] dark:text-[#c5d3e6]">
-                  <span className="font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]">
+                <p className="text-white/85">
+                  <span className="font-semibold text-white">
                     {notice.whatIUseLabel}
                   </span>{' '}
                   {notice.whatIUseBody}
                 </p>
-                <p className="text-[#4a6280] dark:text-[#c5d3e6]">
-                  <span className="font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]">
+                <p className="text-white/85">
+                  <span className="font-semibold text-white">
                     {notice.whyLabel}
                   </span>{' '}
                   {notice.whyBody}
                 </p>
-                <p className="text-[#4a6280] dark:text-[#c5d3e6]">
-                  <span className="font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]">
+                <p className="text-white/85">
+                  <span className="font-semibold text-white">
                     {notice.privacyLabel}
                   </span>{' '}
                   {notice.privacyBody}
                 </p>
-                <p className="text-[#4a6280] dark:text-[#c5d3e6]">
-                  <span className="font-semibold text-[#1f3a5f] dark:text-[#f6f4f1]">
+                <p className="text-white/85">
+                  <span className="font-semibold text-white">
                     {notice.choiceLabel}
                   </span>{' '}
                   {notice.choiceBody}
                 </p>
-                <p className="text-xs font-medium text-[#7A1A14] dark:text-[#FDA29B] pt-1">
+                <p className="text-xs font-semibold text-[#FECDD3] pt-1">
                   {notice.emergencyLine}
                 </p>
               </div>
 
               {/* Voluntary & Specific Unticked Consent Checkboxes */}
-              <div className="pt-3 border-t border-[#dce3ec] dark:border-[#2d4b73] space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
+              <div className="pt-4 border-t border-white/15 space-y-2.5">
+                <label className="flex items-start gap-3 py-1.5 min-h-[44px] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={ageChecked}
                     onChange={(e) => setAgeChecked(e.target.checked)}
-                    className="mt-0.5 w-5 h-5 rounded border-[#c5d1e0] dark:border-[#4b6f9c] text-[#3d6a9e] accent-[#3d6a9e] dark:accent-[#6994c6] shrink-0 cursor-pointer"
+                    className="mt-0.5 w-5 h-5 rounded border-white/40 accent-[#6D3FE0] shrink-0 cursor-pointer"
                   />
-                  <span className="text-xs sm:text-sm text-[#1f3a5f] dark:text-[#f6f4f1] leading-snug">
+                  <span className="text-xs sm:text-sm text-white leading-snug">
                     {notice.ageCheckbox}
                   </span>
                 </label>
 
                 <div className="flex items-start gap-3">
-                  <label className="flex items-start gap-3 cursor-pointer flex-1">
+                  <label className="flex items-start gap-3 py-1.5 min-h-[44px] cursor-pointer flex-1">
                     <input
                       type="checkbox"
                       checked={privacyChecked}
                       onChange={(e) => setPrivacyChecked(e.target.checked)}
-                      className="mt-0.5 w-5 h-5 rounded border-[#c5d1e0] dark:border-[#4b6f9c] text-[#3d6a9e] accent-[#3d6a9e] dark:accent-[#6994c6] shrink-0 cursor-pointer"
+                      className="mt-0.5 w-5 h-5 rounded border-white/40 accent-[#6D3FE0] shrink-0 cursor-pointer"
                     />
-                    <span className="text-xs sm:text-sm text-[#1f3a5f] dark:text-[#f6f4f1] leading-snug">
+                    <span className="text-xs sm:text-sm text-white leading-snug">
                       {notice.consentCheckbox}{' '}
                       <button
                         type="button"
@@ -311,7 +495,7 @@ export function ChatWorkspace({
                           e.preventDefault();
                           setLearnMoreOpen(true);
                         }}
-                        className="text-[#3d6a9e] dark:text-[#8eb4e0] font-semibold underline hover:text-[#2f5582] dark:hover:text-[#b4cff0] cursor-pointer"
+                        className="text-white font-semibold underline hover:text-white/80 cursor-pointer"
                       >
                         {notice.learnMore}
                       </button>
@@ -324,13 +508,13 @@ export function ChatWorkspace({
                     type="button"
                     disabled={!ageChecked || !privacyChecked}
                     onClick={onAcceptPopia}
-                    className="px-5 py-2.5 min-h-[44px] rounded-lg bg-[#3d6a9e] text-white text-sm font-medium hover:bg-[#2f5582] dark:bg-[#6994c6] dark:text-[#0f1f36] dark:hover:bg-[#7da6d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-full bg-white text-[#6D3FE0] text-sm font-semibold hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-sm"
                   >
                     {notice.startButton}
                   </button>
                 </div>
               </div>
-            </section>
+            </GlassCard>
           )}
 
           {popiaConsent &&
@@ -358,10 +542,10 @@ export function ChatWorkspace({
                             alt="Thuso"
                             referrerPolicy="no-referrer"
                             onError={() => setAvatarError(true)}
-                            className="w-8 h-8 rounded-full object-cover border border-[#dce3ec] dark:border-[#2d4b73]"
+                            className="w-8 h-8 rounded-full object-cover border border-white/30"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-[#e3ecf6] dark:bg-[#213f66] border border-[#dce3ec] dark:border-[#2d4b73] flex items-center justify-center text-[#3d6a9e] dark:text-[#8eb4e0]">
+                          <div className="w-8 h-8 rounded-full bg-white/15 border border-white/25 flex items-center justify-center text-white">
                             <HeartHandshake className="w-4 h-4" aria-hidden="true" />
                           </div>
                         )}
@@ -376,8 +560,8 @@ export function ChatWorkspace({
                       <div
                         className={
                           isModel
-                            ? 'px-4 py-3 rounded-2xl rounded-bl-sm bg-[#e3ecf6] dark:bg-[#213f66] text-[#1f3a5f] dark:text-[#f6f4f1] text-[15px] sm:text-base leading-[1.65] whitespace-pre-wrap'
-                            : 'px-4 py-3 rounded-2xl rounded-br-sm bg-[#f6f4f1] dark:bg-[#12233b] border border-[#ddd8d0] dark:border-[#2d4b73] text-[#1f3a5f] dark:text-[#f6f4f1] text-[15px] sm:text-base leading-[1.6] whitespace-pre-wrap'
+                            ? 'px-5 py-3.5 rounded-[24px] rounded-bl-md bg-white/[0.15] border border-white/25 text-white text-[15px] sm:text-base leading-[1.65] whitespace-pre-wrap'
+                            : 'px-5 py-3.5 rounded-[24px] rounded-br-md bg-white/[0.09] border border-white/20 text-white text-[15px] sm:text-base leading-[1.6] whitespace-pre-wrap'
                         }
                       >
                         {msg.text ? (
@@ -387,9 +571,9 @@ export function ChatWorkspace({
                             className="inline-flex items-center gap-1.5 py-1"
                             aria-label="Thuso is typing"
                           >
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce [animation-delay:-0.3s]" />
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce [animation-delay:-0.15s]" />
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce" />
                           </span>
                         ) : (
                           ''
@@ -397,13 +581,13 @@ export function ChatWorkspace({
                       </div>
 
                       {isModel && msg.piiNotice && (
-                        <p className="mt-1.5 text-xs text-[#4a6280] dark:text-[#c5d3e6]">
+                        <p className="mt-1.5 text-xs text-white/80">
                           Note: Personal details (like an ID or phone number) were masked for your privacy before processing.
                         </p>
                       )}
 
                       <div
-                        className={`mt-1.5 flex items-center gap-3 text-xs text-[#4a6280] dark:text-[#c5d3e6] ${
+                        className={`mt-1.5 flex items-center gap-3 text-xs text-white/80 ${
                           isModel ? 'justify-start' : 'justify-end'
                         }`}
                       >
@@ -415,7 +599,7 @@ export function ChatWorkspace({
                             <>
                               <span aria-hidden="true">·</span>
                               {isAlreadySaved ? (
-                                <span className="inline-flex items-center gap-1 text-[#3d6a9e] dark:text-[#8eb4e0] font-medium">
+                                <span className="inline-flex items-center gap-1 text-white font-medium">
                                   <Check className="w-3.5 h-3.5" aria-hidden="true" />
                                   Saved to Small Steps
                                 </span>
@@ -423,7 +607,7 @@ export function ChatWorkspace({
                                 <button
                                   type="button"
                                   onClick={() => openStepSaver(msg)}
-                                  className="inline-flex items-center gap-1 text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#3d6a9e] dark:hover:text-[#8eb4e0] transition-colors cursor-pointer py-1"
+                                  className="inline-flex items-center gap-1 text-white/80 hover:text-white hover:underline transition-colors cursor-pointer py-1"
                                 >
                                   <BookmarkPlus className="w-3.5 h-3.5" aria-hidden="true" />
                                   <span>Save a small step</span>
@@ -434,10 +618,10 @@ export function ChatWorkspace({
                       </div>
 
                       {isSavingThis && (
-                        <div className="mt-2 p-3 rounded-xl bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] space-y-2">
+                        <GlassCard padding="compact" className="mt-2 space-y-3">
                           <label
                             htmlFor={`step-input-${msg.id}`}
-                            className="block text-xs font-medium text-[#1f3a5f] dark:text-[#f6f4f1]"
+                            className="block text-xs font-medium text-white"
                           >
                             Edit your small next step before saving:
                           </label>
@@ -446,25 +630,25 @@ export function ChatWorkspace({
                             type="text"
                             value={stepDraftText}
                             onChange={(e) => setStepDraftText(e.target.value)}
-                            className="w-full px-3 py-2 text-sm bg-white dark:bg-[#182d4a] border border-[#c5d1e0] dark:border-[#2d4b73] rounded-lg text-[#1f3a5f] dark:text-[#f6f4f1]"
+                            className="w-full min-h-[44px] px-3.5 py-2.5 text-sm bg-white/10 border border-white/25 rounded-[16px] text-white placeholder:text-white/60 focus:bg-white/15 focus:border-white/50 focus:outline-none"
                           />
                           <div className="flex items-center gap-2 justify-end">
                             <button
                               type="button"
                               onClick={() => setStepDraftId(null)}
-                              className="px-3 py-1.5 min-h-[36px] text-xs font-medium text-[#4a6280] dark:text-[#c5d3e6] hover:text-[#1f3a5f] dark:hover:text-[#f6f4f1] rounded-lg cursor-pointer"
+                              className="px-4 py-2 min-h-[44px] text-xs font-medium text-white/85 hover:text-white rounded-full cursor-pointer"
                             >
                               Cancel
                             </button>
                             <button
                               type="button"
                               onClick={() => confirmSaveStep(msg.id)}
-                              className="px-3 py-1.5 min-h-[36px] text-xs font-medium bg-[#3d6a9e] text-white rounded-lg hover:bg-[#2f5582] dark:bg-[#6994c6] dark:text-[#0f1f36] dark:hover:bg-[#7da6d4] cursor-pointer"
+                              className="px-5 py-2 min-h-[44px] text-xs font-semibold bg-white text-[#6D3FE0] rounded-full hover:bg-white/90 cursor-pointer"
                             >
                               Save step
                             </button>
                           </div>
-                        </div>
+                        </GlassCard>
                       )}
 
                       {isModel && msg.safetyAlert && (
@@ -479,17 +663,20 @@ export function ChatWorkspace({
           {/* Starter Prompts shown cleanly after POPIA consent before user begins */}
           {popiaConsent && !hasUserMessages && !isStreaming && (
             <div className="pt-2">
-              <p className="text-xs font-medium text-[#4a6280] dark:text-[#c5d3e6] mb-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80 mb-2">
+                Where to begin
+              </p>
+              <p className="text-xs text-white/85 mb-3">
                 Not sure where to start? Pick something close to what you are carrying, or write in your own words:
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {CONVERSATION_STARTERS.map((starter) => (
                   <button
                     key={starter}
                     type="button"
                     disabled={isStreaming}
                     onClick={() => onSendMessage(starter)}
-                    className="text-left p-3.5 rounded-xl bg-[#f6f4f1] dark:bg-[#12233b] border border-[#dce3ec] dark:border-[#2d4b73] hover:border-[#6994c6] hover:bg-[#e3ecf6] dark:hover:bg-[#213f66] disabled:opacity-40 disabled:cursor-not-allowed text-sm text-[#1f3a5f] dark:text-[#f6f4f1] leading-snug transition-colors cursor-pointer min-h-[48px]"
+                    className="glass text-left p-4 hover:bg-white/[0.22] disabled:opacity-40 disabled:cursor-not-allowed text-xs text-white leading-relaxed transition-colors cursor-pointer h-auto min-h-[44px] overflow-visible"
                   >
                     “{starter}”
                   </button>
@@ -500,9 +687,11 @@ export function ChatWorkspace({
 
           {error && (
             <div className="space-y-3">
-              <div
+              <GlassCard
+                padding="compact"
+                variant="alert"
                 role="alert"
-                className="p-4 rounded-xl bg-[#FEF7F7] dark:bg-[#331618] border border-[#F3C5C5] dark:border-[#7A271A] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-[#7A1A14] dark:text-[#FDA29B]"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-white"
               >
                 <span>{error}</span>
                 {onRetryLastMessage && (
@@ -510,12 +699,12 @@ export function ChatWorkspace({
                     type="button"
                     onClick={onRetryLastMessage}
                     disabled={isStreaming}
-                    className="px-4 py-2 min-h-[40px] rounded-lg bg-white dark:bg-[#182d4a] border border-[#F3C5C5] dark:border-[#7A271A] text-xs font-medium text-[#7A1A14] dark:text-[#FDA29B] hover:bg-[#FEF3F2] dark:hover:bg-[#461d20] disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="px-5 py-2 min-h-[44px] rounded-full bg-white text-xs font-semibold text-[#9F1239] hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     Try again
                   </button>
                 )}
-              </div>
+              </GlassCard>
               <SafetyPanel
                 contacts={
                   urgentResources.length > 0
@@ -531,28 +720,46 @@ export function ChatWorkspace({
       </div>
 
       {/* Bottom Composer */}
-      <div className="shrink-0 border-t border-[#dce3ec] dark:border-[#2d4b73] bg-white dark:bg-[#182d4a] px-4 sm:px-6 py-3">
+      <GlassCard padding="compact" className="shrink-0 mt-2 mb-3 sm:mb-0">
         <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
           {popiaConsent && isStreaming && (
             <div
               role="status"
               aria-live="polite"
-              className="flex items-center gap-2 px-1 pb-2 text-xs text-[#4a6280] dark:text-[#c5d3e6]"
+              className="flex items-center gap-2 px-1 pb-2 text-xs text-white/85"
             >
               <span className="inline-flex items-center gap-1" aria-hidden="true">
-                <span className="w-1 h-1 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-1 h-1 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-1 h-1 rounded-full bg-[#3d6a9e] dark:bg-[#8eb4e0] animate-bounce" />
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce" />
               </span>
               <span className="italic">Thuso is typing...</span>
             </div>
           )}
+          {popiaConsent && isListening && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-between gap-2 px-1 pb-2 text-xs text-white"
+            >
+              <span>Listening… speak freely, tap the microphone again to stop.</span>
+            </div>
+          )}
+          {popiaConsent && voiceError && !isListening && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="px-1 pb-2 text-xs text-[#FECDD3]"
+            >
+              {voiceError}
+            </div>
+          )}
           <div
             data-tour="chat-input"
-            className={`flex items-end gap-2 p-2 rounded-xl border bg-[#f6f4f1] dark:bg-[#12233b] transition-colors ${
+            className={`flex items-end gap-2 p-2 rounded-[16px] border bg-white/10 transition-colors ${
               popiaConsent
-                ? 'border-[#c5d1e0] dark:border-[#2d4b73] focus-within:bg-white dark:focus-within:bg-[#162944] focus-within:border-[#3d6a9e] dark:focus-within:border-[#8eb4e0]'
-                : 'border-[#dce3ec] dark:border-[#2d4b73] opacity-70'
+                ? 'border-white/25 focus-within:bg-white/[0.16] focus-within:border-white/50'
+                : 'border-white/15 opacity-60'
             }`}
           >
             <label htmlFor="thuso-message-input" className="sr-only">
@@ -572,13 +779,44 @@ export function ChatWorkspace({
               }
               disabled={isStreaming || !popiaConsent}
               maxLength={1500}
-              className="flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-[#1f3a5f] dark:text-[#f6f4f1] placeholder:text-[#5c728f] dark:placeholder:text-[#9cb1cc] focus:outline-none max-h-40 disabled:cursor-not-allowed"
+              className="flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-white placeholder:text-white/65 focus:outline-none max-h-40 disabled:cursor-not-allowed"
             />
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              disabled={isStreaming || !popiaConsent}
+              aria-label={
+                isListening
+                  ? 'Stop voice input'
+                  : speechSupported
+                    ? 'Speak your message'
+                    : 'Voice input unavailable in this browser'
+              }
+              aria-pressed={isListening}
+              title={
+                isListening
+                  ? 'Stop listening'
+                  : speechSupported
+                    ? 'Speak your message'
+                    : 'Voice input not supported in this browser'
+              }
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                isListening
+                  ? 'bg-white/25 text-white border border-white/50'
+                  : 'bg-transparent text-white/85 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {isListening ? (
+                <MicOff className="w-4 h-4" aria-hidden="true" />
+              ) : (
+                <Mic className="w-4 h-4" aria-hidden="true" />
+              )}
+            </button>
             <button
               type="submit"
               disabled={!input.trim() || isStreaming || !popiaConsent}
               aria-label="Send message"
-              className="min-h-[44px] min-w-[44px] px-4 rounded-lg bg-[#3d6a9e] text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 hover:bg-[#2f5582] dark:bg-[#6994c6] dark:text-[#0f1f36] dark:hover:bg-[#7da6d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 cursor-pointer"
+              className="min-h-[44px] min-w-[44px] px-5 rounded-full bg-white text-[#6D3FE0] text-sm font-semibold inline-flex items-center justify-center gap-1.5 hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 cursor-pointer shadow-sm"
             >
               <span>Send</span>
               <ArrowUp className="w-4 h-4" aria-hidden="true" />
@@ -586,13 +824,13 @@ export function ChatWorkspace({
           </div>
           <p
             data-tour="privacy-line"
-            className="mt-2 text-[11px] text-[#4a6280] dark:text-[#c5d3e6] text-center"
+            className="mt-2.5 text-[11px] text-white/80 text-center"
           >
             Thuso is an AI support companion · Not saved on our servers ·{' '}
             <button
               type="button"
               onClick={() => setLearnMoreOpen(true)}
-              className="underline text-[#3d6a9e] hover:text-[#2f5582] dark:text-[#8eb4e0] dark:hover:text-[#b4cff0] py-1 cursor-pointer"
+              className="underline text-white hover:text-white/80 py-1 cursor-pointer"
             >
               Privacy notice
             </button>
@@ -600,13 +838,13 @@ export function ChatWorkspace({
             <button
               type="button"
               onClick={onStartTour}
-              className="underline text-[#3d6a9e] hover:text-[#2f5582] dark:text-[#8eb4e0] dark:hover:text-[#b4cff0] py-1 cursor-pointer"
+              className="underline text-white hover:text-white/80 py-1 cursor-pointer"
             >
               Take a quick tour
             </button>
           </p>
         </form>
-      </div>
+      </GlassCard>
 
       <PrivacyNoticeModal
         isOpen={learnMoreOpen}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { triggerHaptic } from '../utils/haptics.ts';
 
 export interface TourStep {
   id: string;
@@ -284,7 +285,7 @@ export function CoachMarksTour({
     return null;
   }
 
-  const isMobile = viewport.width < 640;
+  const isMobile = viewport.width < 768;
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === visibleSteps.length - 1;
 
@@ -295,12 +296,26 @@ export function CoachMarksTour({
   const cutoutWidth = Math.min(viewport.width - cutoutLeft, targetRect.width + pad * 2);
   const cutoutHeight = Math.min(viewport.height - cutoutTop, targetRect.height + pad * 2);
 
-  // Desktop card placement pointing to target
+  // Mobile: steps 1..4 sit at top safe-area so bottom nav stays visible and tappable;
+  // step 5 (last step) keeps its bottom position.
+  // Desktop: pointer card placed above or below the spotlighted element.
   let cardStyle: React.CSSProperties = {};
   let pointerDirection: 'top' | 'bottom' | null = null;
   let pointerLeftPx = 40;
 
-  if (!isMobile) {
+  if (isMobile) {
+    cardStyle = !isLast
+      ? {
+          top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+          left: '12px',
+          right: '12px',
+        }
+      : {
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+          left: '12px',
+          right: '12px',
+        };
+  } else {
     const margin = 16;
     const gap = 14;
     const width = Math.min(352, viewport.width - margin * 2);
@@ -337,23 +352,27 @@ export function CoachMarksTour({
   }
 
   return (
-    <div className="fixed inset-0 z-[60]">
-      {/* Click-shield backdrop */}
+    <div className="fixed inset-0 z-[60] pointer-events-none">
+      {/* Click-shield backdrop: leaves mobile bottom nav tappable on steps 1..4 */}
       <div
         aria-hidden="true"
-        className="fixed inset-0 z-[60] bg-transparent"
+        className={`fixed inset-x-0 top-0 z-[60] bg-transparent pointer-events-auto ${
+          isMobile && !isLast
+            ? 'bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))]'
+            : 'bottom-0'
+        }`}
       />
 
-      {/* Spotlight cutout & blue highlight ring */}
+      {/* Spotlight cutout & highlight ring */}
       <div
         aria-hidden="true"
-        className="fixed z-[61] pointer-events-none rounded-xl border-2 border-[#6994c6] transition-all duration-200 ease-out"
+        className="fixed z-[61] pointer-events-none rounded-[20px] border-2 border-white transition-all duration-200 ease-out"
         style={{
           top: `${Math.round(cutoutTop)}px`,
           left: `${Math.round(cutoutLeft)}px`,
           width: `${Math.round(cutoutWidth)}px`,
           height: `${Math.round(cutoutHeight)}px`,
-          boxShadow: '0 0 0 9999px rgba(15, 31, 54, 0.72)',
+          boxShadow: '0 0 0 9999px rgba(30, 27, 75, 0.72)',
         }}
       />
 
@@ -365,9 +384,15 @@ export function CoachMarksTour({
         aria-labelledby={titleId}
         aria-describedby={descId}
         tabIndex={-1}
-        style={isMobile ? undefined : cardStyle}
-        className={`fixed z-[62] bg-white text-[#1f3a5f] border border-[#dce3ec] rounded-xl shadow-xl p-5 focus:outline-none ${
-          isMobile ? 'bottom-3 left-3 right-3' : ''
+        style={cardStyle}
+        className={`fixed z-[62] pointer-events-auto bg-white text-[#1f3a5f] border border-white/60 rounded-[24px] shadow-2xl p-6 focus:outline-none ${
+          isMobile
+            ? `max-w-md mx-auto ${
+                !isLast
+                  ? 'max-h-[calc(100dvh-env(safe-area-inset-top,0px)-140px)] overflow-y-auto'
+                  : ''
+              }`
+            : ''
         }`}
       >
         {/* Directional caret on desktop */}
@@ -375,14 +400,14 @@ export function CoachMarksTour({
           <div
             aria-hidden="true"
             style={{ left: `${Math.round(pointerLeftPx)}px` }}
-            className="absolute -top-2 w-3.5 h-3.5 rotate-45 bg-white border-t border-l border-[#dce3ec]"
+            className="absolute -top-2 w-3.5 h-3.5 rotate-45 bg-white"
           />
         )}
         {!isMobile && pointerDirection === 'bottom' && (
           <div
             aria-hidden="true"
             style={{ left: `${Math.round(pointerLeftPx)}px` }}
-            className="absolute -bottom-2 w-3.5 h-3.5 rotate-45 bg-white border-b border-r border-[#dce3ec]"
+            className="absolute -bottom-2 w-3.5 h-3.5 rotate-45 bg-white"
           />
         )}
 
@@ -393,13 +418,13 @@ export function CoachMarksTour({
 
         {/* Top row: Step counter + Skip tour at top right */}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-semibold text-[#3d6a9e] tabular-nums">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6D3FE0] tabular-nums">
             {stepIndex + 1} of {visibleSteps.length}
           </span>
           <button
             type="button"
             onClick={onSkip}
-            className="min-h-[44px] px-2 -mr-2 inline-flex items-center justify-center text-xs font-semibold text-[#3d6a9e] hover:text-[#1f3a5f] hover:underline rounded-lg cursor-pointer"
+            className="min-h-[44px] px-2 -mr-2 inline-flex items-center justify-center text-xs font-semibold text-[#1f3a5f]/70 hover:text-[#1f3a5f] hover:underline rounded-full cursor-pointer"
           >
             Skip tour
           </button>
@@ -407,14 +432,14 @@ export function CoachMarksTour({
 
         <h2
           id={titleId}
-          className="font-serif text-lg font-semibold text-[#1f3a5f] mt-1"
+          className="text-lg font-bold tracking-tight text-[#1f3a5f] mt-1"
         >
           {activeStep.title}
         </h2>
 
         <p
           id={descId}
-          className="text-sm text-[#1f3a5f] leading-relaxed mt-2"
+          className="text-sm text-[#1f3a5f]/85 leading-relaxed mt-2"
         >
           {activeStep.text}
         </p>
@@ -425,15 +450,20 @@ export function CoachMarksTour({
             type="button"
             onClick={handleBack}
             disabled={isFirst}
-            className="min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg border border-[#dce3ec] bg-[#f6f4f1] text-[#1f3a5f] hover:bg-[#e3ecf6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-full text-[#1f3a5f]/75 hover:text-[#1f3a5f] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             Back
           </button>
 
           <button
             type="button"
-            onClick={handleNext}
-            className="min-h-[44px] px-5 py-2 text-sm font-medium rounded-lg bg-[#3d6a9e] text-white hover:bg-[#2f5582] transition-colors cursor-pointer"
+            onClick={() => {
+              if (!isLast) {
+                triggerHaptic('light');
+              }
+              handleNext();
+            }}
+            className="min-h-[44px] px-6 py-2 text-sm font-semibold rounded-full bg-[#6D3FE0] text-white hover:bg-[#5c32c7] transition-colors cursor-pointer"
           >
             {isLast ? 'Got it' : 'Next'}
           </button>
